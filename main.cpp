@@ -9,8 +9,8 @@ int main(int argc, char* argv[]) {
 	// TEST
 	Huffman e, d;
 	
-	e.encode("README");
-	d.decode("README.huff", "UN_README");
+	e.encode("README.md");
+	d.decode("README.md.huff", "UN_README.md");
 
 	// RUN IN COMMAND 
 	//Huffman h;
