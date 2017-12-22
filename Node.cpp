@@ -13,7 +13,6 @@ Node::Node() {
 	right = NULL;
 }
 
-
 Node::Node(char d, int c, NODE_TYPE t)
 {
 	data = d;
@@ -23,6 +22,7 @@ Node::Node(char d, int c, NODE_TYPE t)
 	left = NULL;
 	right = NULL;
 }
+
 Node::Node(Node *l, Node *r, NODE_TYPE t)
 {
 	data = NULL;
@@ -41,7 +41,6 @@ Node::~Node(void) {
 void Node::appendCode(string str) {
 	code.append(str);
 }
-
 
 int Node::getCount() {
 	return count;

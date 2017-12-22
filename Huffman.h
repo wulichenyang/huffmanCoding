@@ -6,6 +6,7 @@
 #include <vector>
 #include <string>
 #include "Node.h"
+#include <pthread.h>
 using namespace std;
 
 // ---------- HUFFMAN CLASS -------------------------------------------------------------
@@ -26,15 +27,15 @@ private:
 	map<string, char> *charMap;
 	// 字符种类数（MAX = 256）
 	int typeNum;
-	// 不足32位的最后bit数
-	char padding;
-	// 编码后的 bitset<32> 个数（与原文件字符数不同）
+	// 不足BIT_NUM位的最后bit数
+	int padding;
+	// 编码后的 bitset<BIT_NUM> 个数（与原文件字符数不同）
 	unsigned int bitsetNum;
-
 	// ---------- PRIVATE FUNCTIONS -----------------------------------------------------
 	map<char, int> *getFrequencies(ifstream &infile);
 
 	// ENCODE
+
 	void buildTree();
 	void buildCharCodeMap();
 	void getRawData();

@@ -5,7 +5,11 @@
 #include <iostream>
 #include <fstream>
 #include <bitset>
+#include <pthread.h>
 #include "Huffman.h"
+#define BUF_SIZE 1024
+#define BIT_NUM 256
+#define BITSET_SIZE 32
 
 using namespace std;
 
@@ -26,11 +30,11 @@ Huffman::~Huffman() {
 }
 
 map<char, int> *Huffman::getFrequencies(ifstream &infile) {
-	char c;
 	map<char, int> *tempMap = new map<char, int>;
-	map<char, int>::iterator m_it;
 	int start, stop;
 	typeNum = 0;
+	char buf[1024];
+	map<char, int>::iterator m_it;
 
 	infile.seekg(0, ios::beg);
 	start = infile.tellg();
@@ -40,25 +44,31 @@ map<char, int> *Huffman::getFrequencies(ifstream &infile) {
 	size = stop - start;
 
 	cout << "统计词频中..." << endl;
-	for (int i = 0; i < size; i++) {
-		infile.read(&c, 1);
-		m_it = tempMap->find(c);
-		// 满了256 个字符后直接进入else修改频率
-		if (typeNum != 256) {
+
+	while (!infile.eof()) {
+		infile.read(buf, BUF_SIZE);
+		streamsize n = infile.gcount();
+		for (size_t i = 0; i < n; i++)
+		{
+			m_it = tempMap->find(buf[i]);
 			if (m_it == tempMap->end()) {
-				(*tempMap)[c] = 1;
+				tempMap->insert(make_pair(buf[i], 1));
+				//(*(tempParam->tempMap))[c] = 1;
 				// 字符种数
 				typeNum++;
 			}
 			else {
-				(*tempMap)[c]++;
+				m_it->second++;
+				/*(*(tempParam->tempMap))[c]++;*/
 			}
 		}
-		else {
-			(*tempMap)[c]++;
-		}
 	}
+	// 清空 eofbit flag 允许重新操作文件流
+	infile.clear();
+
+	cout << "统计完毕" << endl;
 	cout << "typeNum = " << typeNum << endl;
+
 	return tempMap;
 }
 
@@ -94,39 +104,43 @@ void Huffman::getRawData() {
 		bitNum += m_it->second * (*codeMap)[m_it->first].size();
 		m_it++;
 	}
-	bitsetNum = bitNum / 32;
-	padding = (char)(bitNum %= 32);
+	bitsetNum = bitNum / BIT_NUM;
+	padding = (int)(bitNum %= BIT_NUM);
 }
 
 void Huffman::writeHuffmanData(ifstream &infile, ofstream &outfile) {
 	infile.seekg(0, ios::beg);
-	char c;
 	string code;
 	string temp;
-	int count = 0;
+	int tempSize = 0;
+	char buf[BUF_SIZE];
 
 	cout << endl << "压缩中..." << endl;
-	for (int i = 0; i < size; i++) {
-		infile.read(&c, 1);
-		code.append((*codeMap)[c]);
-		count += (*codeMap)[c].size();
-		if (count >= 32) {
-			temp = code.substr(0, 32);
-			reverse(temp.begin(), temp.end());
-			bitset<32> bitvec(temp, 0, 32);
-			code.erase(0, 32);
-			outfile.write((char*)&bitvec, 4);
-			count = code.size();
-		}
-		if (i == size - 1) {
-			// 剩余不足32位的code写入文件
-			if (code.size() != 0) {
-				reverse(code.begin(), code.end());
-				bitset<32> bitvecLast(code);
-				outfile.write((char*)&bitvecLast, 4);
+	while (!infile.eof()) {
+		infile.read(buf, BUF_SIZE);
+		streamsize n = infile.gcount();
+
+		// 读buf的字符按查表将code写入目的文件
+		for (size_t i = 0; i < n; i++) {
+			code.append((*codeMap)[buf[i]]);
+			tempSize += (*codeMap)[buf[i]].size();
+			if (tempSize >= BIT_NUM) {
+				temp = code.substr(0, BIT_NUM);
+				reverse(temp.begin(), temp.end());
+				bitset<BIT_NUM> bitvec(temp, 0, BIT_NUM);
+				code.erase(0, BIT_NUM);
+				outfile.write((char*)&bitvec, BITSET_SIZE);
+				tempSize = code.size();
 			}
 		}
+		// 剩余不足BIT_NUM位的code写入文件
+		if (n < BUF_SIZE && tempSize > 0) {
+			reverse(code.begin(), code.end());
+			bitset<BIT_NUM> bitvecLast(code);
+			outfile.write((char*)&bitvecLast, BITSET_SIZE);
+		}
 	}
+	infile.clear();
 	cout << endl << "压缩完毕！" << endl << endl;
 }
 
@@ -140,11 +154,10 @@ void Huffman::writeToFile(ifstream &infile, string filename) {
 		exit(0);
 	}
 
-
 	getRawData();
-	// 写入字符种类数、不满32位的位数、bitset<32>个数
+	// 写入字符种类数、不满BIT_NUM位的位数、bitset<BIT_NUM>个数
 	outfile.write((char*)&typeNum, 4);
-	outfile.write(&padding, 1);
+	outfile.write((char*)&padding, 4);
 	outfile.write((char*)&bitsetNum, 4);
 	// 写入词频表
 	map<char, int>::iterator m_it = frequencies->begin();
@@ -164,7 +177,6 @@ void Huffman::writeToFile(ifstream &infile, string filename) {
 // ---------- ENCODE STRING -------------------------------------------------------------
 void Huffman::encode(string filename) {
 	ifstream infile(filename.c_str(), ios::binary);
-	int size;
 
 	if (!infile) {
 		cout << "error in open " << filename << endl;
@@ -203,7 +215,7 @@ void Huffman::readFrequencies(ifstream &compFile) {
 
 void Huffman::readRawData(ifstream &compFile) {
 	compFile.read((char*)&typeNum, 4);
-	compFile.read(&padding, 1);
+	compFile.read((char*)&padding, 4);
 	compFile.read((char*)&bitsetNum, 4);
 
 	readFrequencies(compFile);
@@ -218,18 +230,20 @@ void Huffman::buildCodeCharMap() {
 }
 
 void Huffman::writeToUncompressed(ifstream &infile, ofstream &outfile) {
-	bitset<32> bitvec;
+	bitset<BIT_NUM> bitvec;
 	string str;
 	map<string, char>::iterator m_it;
+	char buf[BUF_SIZE];
+	size_t j = 0;
 
 	//Node *node = tree;
 	//node = node -> travelTreeWrite(node, tree, infile, outfile, pos, bitvec, i, c, bitsetNum);
 
-	// 处理bitset<32>整数倍的数据
+	// 处理bitset<BIT_NUM>整数倍的数据
 	cout << endl << "解压中..." << endl;
 	for (size_t i = 0; i < bitsetNum; i++)
 	{
-		infile.read((char*)&bitvec, 4);
+		infile.read((char*)&bitvec, BITSET_SIZE);
 		for (size_t pos = 0; pos < bitvec.size(); pos++)
 		{
 			if (bitvec[pos] == 0) {
@@ -240,14 +254,25 @@ void Huffman::writeToUncompressed(ifstream &infile, ofstream &outfile) {
 			}
 			m_it = charMap->find(str);
 			if (m_it != charMap->end()) {
-				outfile.write(&(m_it->second), 1);
-				str = "";
+				if (j < BUF_SIZE) {
+					buf[j++] = m_it->second;
+					str = "";
+				}
+				else {
+					outfile.write(buf, BUF_SIZE);
+					j = 0;
+					buf[j++] = m_it->second;
+					str = "";
+				}
 			}
 		}
 	}
+	// 剩余不足BUF_SIZE的字符写入解压目的文件
+	outfile.write(buf, j);
+	j = 0;
 
-	// 处理剩下不足32位的数据
-	infile.read((char*)&bitvec, 4);
+	// 处理剩下不足BIT_NUM位的数据
+	infile.read((char*)&bitvec, BITSET_SIZE);
 	for (size_t pos = 0; pos < (int)padding; pos++)
 	{
 		if (bitvec[pos] == 0) {
@@ -258,10 +283,20 @@ void Huffman::writeToUncompressed(ifstream &infile, ofstream &outfile) {
 		}
 		m_it = charMap->find(str);
 		if (m_it != charMap->end()) {
-			outfile.write(&(m_it->second), 1);
-			str = "";
+			if (j < BUF_SIZE) {
+				buf[j++] = m_it->second;
+				str = "";
+			}
+			else {
+				outfile.write(buf, BUF_SIZE);
+				j = 0;
+				buf[j++] = m_it->second;
+				str = "";
+			}
 		}
 	}
+	// 剩余不足BUF_SIZE的字符写入解压目的文件
+	outfile.write(buf, j);
 }
 
 void Huffman::decode(string filename, string uncompFilename) {
